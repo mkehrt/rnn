@@ -22,6 +22,7 @@ mod node {
         Input(Input),
         Plus(Node, Node),
         Times(Node, Node),
+        Tanh(Node),
     }
 
     struct NodeInner {
@@ -42,11 +43,19 @@ mod node {
                 Op::Input(input) => {
                     self.data = Some(input.value);
                 }
-                Op::Plus(a, b) => {
-                    self.data = Some(a.eval() + b.eval());
+                Op::Plus(x, y) => {
+                    self.data = Some(x.eval() + y.eval());
                 }
-                Op::Times(a, b) => {
-                    self.data = Some(a.eval() * b.eval());
+                Op::Times(x, y) => {
+                    self.data = Some(x.eval() * y.eval());
+                }
+                Op::Tanh(x) => {
+                    let x = x.eval();
+                    // Let's write this out
+                    let num = f64::exp(2.0 * x) - 1.0;
+                    let den = f64::exp(2.0 * x) + 1.0;
+                    let data = num / den;
+                    self.data = Some(data);
                 }
             }
             self.data.expect("Data is not set when evaling?")
@@ -56,13 +65,16 @@ mod node {
             self.grad = None;
             match &mut self.op {
                 Op::Input(_) => (),
-                Op::Plus(a, b) => {
-                    a.reset_grads();
-                    b.reset_grads();
+                Op::Plus(x, y) => {
+                    x.reset_grads();
+                    y.reset_grads();
                 }
-                Op::Times(a, b) => {
-                    a.reset_grads();
-                    b.reset_grads();
+                Op::Times(x, y) => {
+                    x.reset_grads();
+                    y.reset_grads();
+                }
+                Op::Tanh(x) => {
+                    x.reset_grads();
                 }
             }
         }
@@ -72,16 +84,22 @@ mod node {
             self.grad = Some(current_grad + input_grad);
 
             match &mut self.op {
-                Op::Input(_) => self.grad = Some(input_grad),
-                Op::Plus(a, b) => {
-                    a.compute_grads(input_grad);
-                    b.compute_grads(input_grad);
+                Op::Input(_) => (),
+                Op::Plus(x, y) => {
+                    x.compute_grads(input_grad);
+                    y.compute_grads(input_grad);
                 }
-                Op::Times(a, b) => {
-                    let a_data = a.data().expect("Data is not set when computing grads?");
-                    let b_data = b.data().expect("Data is not set when computing grads?");
-                    a.compute_grads(input_grad * b_data);
-                    b.compute_grads(input_grad * a_data);
+                Op::Times(x, y) => {
+                    let x_data = x.data().expect("Data is not set when computing grads?");
+                    let y_data = y.data().expect("Data is not set when computing grads?");
+                    x.compute_grads(input_grad * y_data);
+                    y.compute_grads(input_grad * x_data);
+                }
+                Op::Tanh(x) => {
+                    let data = x.data().expect("Data is not set when computing grads?");
+                    let local_grad = 1.0 - (data * data);
+                    let output_grad = local_grad * input_grad;
+                    x.compute_grads(output_grad);
                 }
             }
         }
@@ -135,17 +153,17 @@ mod node {
             })
         }
 
-        fn plus(a: &Self, b: &Self) -> Self {
+        fn plus(x: &Self, y: &Self) -> Self {
             Self::new(NodeInner {
-                op: Op::Plus(a.clone(), b.clone()),
+                op: Op::Plus(x.clone(), y.clone()),
                 data: None,
                 grad: None,
             })
         }
 
-        fn times(a: &Self, b: &Self) -> Self {
+        fn times(x: &Self, y: &Self) -> Self {
             Self::new(NodeInner {
-                op: Op::Times(a.clone(), b.clone()),
+                op: Op::Times(x.clone(), y.clone()),
                 data: None,
                 grad: None,
             })
