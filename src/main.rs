@@ -1,7 +1,7 @@
 mod node {
+    use std::cell::{Ref, RefCell, RefMut};
     use std::fmt::Debug;
     use std::ops::{Add, Mul};
-    use std::cell::{RefCell, Ref, RefMut};
     use std::rc::Rc;
 
     struct Input {
@@ -27,7 +27,7 @@ mod node {
 
     struct NodeInner {
         op: Op,
-        data: Option<f64>,
+        value: Option<f64>,
         grad: Option<f64>,
     }
 
@@ -38,27 +38,37 @@ mod node {
     }
 
     impl NodeInner {
+        #[cfg(test)]
+        fn set_value(&mut self, value: f64) {
+            self.value = Some(value);
+        }
+
+        #[cfg(test)]
+        fn set_grad(&mut self, grad: f64) {
+            self.grad = Some(grad);
+        }
+
         fn eval(&mut self) -> f64 {
             match &mut self.op {
                 Op::Input(input) => {
-                    self.data = Some(input.value);
+                    self.value = Some(input.value);
                 }
                 Op::Plus(x, y) => {
-                    self.data = Some(x.eval() + y.eval());
+                    self.value = Some(x.eval() + y.eval());
                 }
                 Op::Times(x, y) => {
-                    self.data = Some(x.eval() * y.eval());
+                    self.value = Some(x.eval() * y.eval());
                 }
                 Op::Tanh(x) => {
                     let x = x.eval();
                     // Let's write this out
                     let num = f64::exp(2.0 * x) - 1.0;
                     let den = f64::exp(2.0 * x) + 1.0;
-                    let data = num / den;
-                    self.data = Some(data);
+                    let value = num / den;
+                    self.value = Some(value);
                 }
             }
-            self.data.expect("Data is not set when evaling?")
+            self.value.expect("Value is not set when evaling?")
         }
 
         fn reset_grads(&mut self) {
@@ -90,14 +100,14 @@ mod node {
                     y.compute_grads(input_grad);
                 }
                 Op::Times(x, y) => {
-                    let x_data = x.data().expect("Data is not set when computing grads?");
-                    let y_data = y.data().expect("Data is not set when computing grads?");
-                    x.compute_grads(input_grad * y_data);
-                    y.compute_grads(input_grad * x_data);
+                    let x_value = x.value().expect("Value is not set when computing grads?");
+                    let y_value = y.value().expect("Value is not set when computing grads?");
+                    x.compute_grads(input_grad * y_value);
+                    y.compute_grads(input_grad * x_value);
                 }
                 Op::Tanh(x) => {
-                    let data = x.data().expect("Data is not set when computing grads?");
-                    let local_grad = 1.0 - (data * data);
+                    let value = x.value().expect("Value is not set when computing grads?");
+                    let local_grad = 1.0 - (value * value);
                     let output_grad = local_grad * input_grad;
                     x.compute_grads(output_grad);
                 }
@@ -118,7 +128,9 @@ mod node {
 
     impl Node {
         fn new(inner: NodeInner) -> Self {
-            Self { inner: Rc::new(RefCell::new(inner)) }
+            Self {
+                inner: Rc::new(RefCell::new(inner)),
+            }
         }
 
         fn get(&self) -> Ref<NodeInner> {
@@ -128,7 +140,7 @@ mod node {
         fn get_mut(&mut self) -> RefMut<NodeInner> {
             self.inner.borrow_mut()
         }
-        
+
         pub fn eval(&mut self) -> f64 {
             self.get_mut().eval()
         }
@@ -141,14 +153,14 @@ mod node {
             self.get_mut().compute_grads(input_grad);
         }
 
-        pub fn data(&self) -> Option<f64> {
-            self.get().data
+        pub fn value(&self) -> Option<f64> {
+            self.get().value
         }
 
         pub fn input(input: Input) -> Self {
             Self::new(NodeInner {
                 op: Op::Input(input),
-                data: None,
+                value: None,
                 grad: None,
             })
         }
@@ -156,7 +168,7 @@ mod node {
         fn plus(x: &Self, y: &Self) -> Self {
             Self::new(NodeInner {
                 op: Op::Plus(x.clone(), y.clone()),
-                data: None,
+                value: None,
                 grad: None,
             })
         }
@@ -164,7 +176,7 @@ mod node {
         fn times(x: &Self, y: &Self) -> Self {
             Self::new(NodeInner {
                 op: Op::Times(x.clone(), y.clone()),
-                data: None,
+                value: None,
                 grad: None,
             })
         }
@@ -172,7 +184,9 @@ mod node {
 
     impl Clone for Node {
         fn clone(&self) -> Self {
-            Self { inner: self.inner.clone() }
+            Self {
+                inner: self.inner.clone(),
+            }
         }
     }
 
