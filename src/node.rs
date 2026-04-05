@@ -53,7 +53,7 @@ impl<T: ScalarType> Scalar<T> {
         *self.inner.borrow()
     }
 
-    fn set_value(&self, value: f64) {
+    pub fn set_value(&self, value: f64) {
         *self.inner.borrow_mut() = value;
     }
 }
