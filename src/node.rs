@@ -1,7 +1,7 @@
 use float_cmp::approx_eq;
 use std::cell::{Ref, RefCell, RefMut};
 use std::fmt::Debug;
-use std::ops::{Add, Mul};
+use std::ops::{Add, Mul, Sub};
 use std::rc::Rc;
 
 fn f64_eq(a: f64, b: f64) -> bool {
@@ -60,6 +60,7 @@ impl PartialEq for Input {
 enum Op {
     Input(Input),
     Plus(Node, Node),
+    Minus(Node, Node),
     Times(Node, Node),
     Tanh(Node),
 }
@@ -107,6 +108,9 @@ impl NodeInner {
             Op::Plus(x, y) => {
                 self.value = Some(x.eval() + y.eval());
             }
+            Op::Minus(x, y) => {
+                self.value = Some(x.eval() - y.eval());
+            }
             Op::Times(x, y) => {
                 self.value = Some(x.eval() * y.eval());
             }
@@ -130,6 +134,10 @@ impl NodeInner {
                 x.reset_grads();
                 y.reset_grads();
             }
+            Op::Minus(x, y) => {
+                x.reset_grads();
+                y.reset_grads();
+            }
             Op::Times(x, y) => {
                 x.reset_grads();
                 y.reset_grads();
@@ -149,6 +157,10 @@ impl NodeInner {
             Op::Plus(x, y) => {
                 x.compute_grads(input_grad);
                 y.compute_grads(input_grad);
+            }
+            Op::Minus(x, y) => {
+                x.compute_grads(input_grad);
+                y.compute_grads(-input_grad);
             }
             Op::Times(x, y) => {
                 let x_value = x.value().expect("Value is not set when computing grads?");
@@ -241,6 +253,10 @@ impl Node {
         Self::new(Op::Times(x.clone(), y.clone()))
     }
 
+    fn minus(x: &Self, y: &Self) -> Self {
+        Self::new(Op::Minus(x.clone(), y.clone()))
+    }
+
     pub fn tanh(&self) -> Self {
         Self::new(Op::Tanh(self.clone()))
     }
@@ -259,6 +275,14 @@ impl Add for &Node {
 
     fn add(self, other: Self) -> Node {
         Node::plus(self, other)
+    }
+}
+
+impl Sub for &Node {
+    type Output = Node;
+
+    fn sub(self, other: Self) -> Node {
+        Node::minus(self, other)
     }
 }
 
