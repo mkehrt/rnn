@@ -18,11 +18,13 @@ fn f64_option_eq(a: Option<f64>, b: Option<f64>) -> bool {
 
 trait ScalarType {}
 
-enum InputScalarType {}
+pub enum InputScalarType {}
 impl ScalarType for InputScalarType {}
+pub type Input = Scalar<InputScalarType>;
 
-enum WeightScalarType {}
+pub enum WeightScalarType {}
 impl ScalarType for WeightScalarType {}
+pub type Weight = Scalar<WeightScalarType>;
 
 #[allow(private_bounds)]
 pub struct Scalar<T> where T: ScalarType {
@@ -30,12 +32,12 @@ pub struct Scalar<T> where T: ScalarType {
     inner: Rc<RefCell<f64>>,
 }
 
-fn new_input(value: f64) -> Scalar<InputScalarType> {
-    Scalar::new(value)
+pub fn new_input(value: f64) -> Input {
+    Input::new(value)
 }
 
-fn new_weight(value: f64) -> Scalar<WeightScalarType> {
-    Scalar::new(value)
+pub fn new_weight(value: f64) -> Weight {
+    Weight::new(value)
 }
 
 #[allow(private_bounds)]
@@ -65,13 +67,13 @@ impl<T: ScalarType> Clone for Scalar<T> {
     }
 }
 
-impl Debug for Scalar<InputScalarType> {
+impl Debug for Input {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Input({:?})", self.value())
     }
 }
 
-impl Debug for Scalar<WeightScalarType> {
+impl Debug for Weight {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Weight({:?})", self.value())
     }
@@ -85,8 +87,8 @@ impl<T: ScalarType> PartialEq for Scalar<T> {
 
 #[derive(Debug, PartialEq)]
 enum Op {
-    Input(Scalar<InputScalarType>),
-    Weight(Scalar<WeightScalarType>),
+    Input(Input),
+    Weight(Weight),
     Plus(Node, Node),
     Minus(Node, Node),
     Times(Node, Node),
@@ -274,11 +276,11 @@ impl Node {
         self.get().value
     }
 
-    pub fn input(input: Scalar<InputScalarType>) -> Self {
+    pub fn input(input: Input) -> Self {
         Self::new(Op::Input(input))
     }
 
-    pub fn weight(weight: Scalar<WeightScalarType>) -> Self {
+    pub fn weight(weight: Weight) -> Self {
         Self::new(Op::Weight(weight))
     }
 
