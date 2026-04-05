@@ -16,13 +16,33 @@ fn f64_option_eq(a: Option<f64>, b: Option<f64>) -> bool {
     }
 }
 
-pub struct Input {
+trait ScalarType {}
+
+enum InputScalarType {}
+impl ScalarType for InputScalarType {}
+
+enum WeightScalarType {}
+impl ScalarType for WeightScalarType {}
+
+#[allow(private_bounds)]
+pub struct Scalar<T> where T: ScalarType {
+    _type: std::marker::PhantomData<T>,
     inner: Rc<RefCell<f64>>,
 }
 
-impl Input {
+fn new_input(value: f64) -> Scalar<InputScalarType> {
+    Scalar::new(value)
+}
+
+fn new_weight(value: f64) -> Scalar<WeightScalarType> {
+    Scalar::new(value)
+}
+
+#[allow(private_bounds)]
+impl<T: ScalarType> Scalar<T> {
     fn new(value: f64) -> Self {
         Self {
+            _type: std::marker::PhantomData::<T>::default(),
             inner: Rc::new(RefCell::new(value)),
         }
     }
@@ -36,21 +56,28 @@ impl Input {
     }
 }
 
-impl Clone for Input {
+impl<T: ScalarType> Clone for Scalar<T> {
     fn clone(&self) -> Self {
         Self {
+            _type: std::marker::PhantomData::<T>::default(),
             inner: self.inner.clone(),
         }
     }
 }
 
-impl Debug for Input {
+impl Debug for Scalar<InputScalarType> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Input({:?})", self.value())
     }
 }
 
-impl PartialEq for Input {
+impl Debug for Scalar<WeightScalarType> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Weight({:?})", self.value())
+    }
+}
+
+impl<T: ScalarType> PartialEq for Scalar<T> {
     fn eq(&self, other: &Self) -> bool {
         f64_eq(self.value(), other.value())
     }
@@ -58,7 +85,8 @@ impl PartialEq for Input {
 
 #[derive(Debug, PartialEq)]
 enum Op {
-    Input(Input),
+    Input(Scalar<InputScalarType>),
+    Weight(Scalar<WeightScalarType>),
     Plus(Node, Node),
     Minus(Node, Node),
     Times(Node, Node),
@@ -105,6 +133,9 @@ impl NodeInner {
             Op::Input(input) => {
                 self.value = Some(input.value());
             }
+            Op::Weight(weight) => {
+                self.value = Some(weight.value());
+            }
             Op::Plus(x, y) => {
                 self.value = Some(x.eval() + y.eval());
             }
@@ -130,6 +161,7 @@ impl NodeInner {
         self.grad = None;
         match &mut self.op {
             Op::Input(_) => (),
+            Op::Weight(_) => (),
             Op::Plus(x, y) => {
                 x.reset_grads();
                 y.reset_grads();
@@ -154,6 +186,7 @@ impl NodeInner {
 
         match &mut self.op {
             Op::Input(_) => (),
+            Op::Weight(_) => (),
             Op::Plus(x, y) => {
                 x.compute_grads(input_grad);
                 y.compute_grads(input_grad);
@@ -241,8 +274,12 @@ impl Node {
         self.get().value
     }
 
-    pub fn input(input: Input) -> Self {
+    pub fn input(input: Scalar<InputScalarType>) -> Self {
         Self::new(Op::Input(input))
+    }
+
+    pub fn weight(weight: Scalar<WeightScalarType>) -> Self {
+        Self::new(Op::Weight(weight))
     }
 
     fn plus(x: &Self, y: &Self) -> Self {
@@ -300,11 +337,11 @@ mod tests {
 
     #[test]
     fn test_input() {
-        let input = Input::new(1.0);
-        let i = Node::input(input);
+        let weight = new_weight(1.0);
+        let i = Node::weight(weight);
 
-        let input_expected = Input::new(1.0);
-        let i_expected = Node::input(input_expected).set_value(1.0).set_grad(1.0);
+        let weight_expected = new_weight(1.0);
+        let i_expected = Node::weight(weight_expected).set_value(1.0).set_grad(1.0);
 
         i.eval();
         i.reset_grads();
@@ -317,30 +354,30 @@ mod tests {
     fn test_first_example() {
         // https://www.youtube.com/watch?v=VMj-3S1tku0&list=PLAqhIrjkxbuWI23v9cThsA9GvCAUhRvKZ
         // Around 51:45.
-        let a_input = Input::new(2.0);
-        let b_input = Input::new(-3.0);
-        let c_input = Input::new(10.0);
-        let f_input = Input::new(-2.0);
+        let a_weight = new_weight(2.0);
+        let b_weight = new_weight(-3.0);
+        let c_weight = new_weight(10.0);
+        let f_weight = new_weight(-2.0);
 
-        let a = Node::input(a_input);
-        let b = Node::input(b_input);
-        let c = Node::input(c_input);
-        let f = Node::input(f_input);
+        let a = Node::weight(a_weight);
+        let b = Node::weight(b_weight);
+        let c = Node::weight(c_weight);
+        let f = Node::weight(f_weight);
 
         let e = &a * &b;
         let d = &e + &c;
         #[allow(non_snake_case)]
         let L = &d * &f;
 
-        let a_input_expected = Input::new(2.0);
-        let b_input_expected = Input::new(-3.0);
-        let c_input_expected = Input::new(10.0);
-        let f_input_expected = Input::new(-2.0);
+        let a_weight_expected = new_weight(2.0);
+        let b_weight_expected = new_weight(-3.0);
+        let c_weight_expected = new_weight(10.0);
+        let f_weight_expected = new_weight(-2.0);
 
-        let a_expected = Node::input(a_input_expected).set_value(2.0).set_grad(6.0);
-        let b_expected = Node::input(b_input_expected).set_value(-3.0).set_grad(-4.0);
-        let c_expected = Node::input(c_input_expected).set_value(10.0).set_grad(-2.0);
-        let f_expected = Node::input(f_input_expected).set_value(-2.0).set_grad(4.0);
+        let a_expected = Node::weight(a_weight_expected).set_value(2.0).set_grad(6.0);
+        let b_expected = Node::weight(b_weight_expected).set_value(-3.0).set_grad(-4.0);
+        let c_expected = Node::weight(c_weight_expected).set_value(10.0).set_grad(-2.0);
+        let f_expected = Node::weight(f_weight_expected).set_value(-2.0).set_grad(4.0);
 
         let e_expected = (&a_expected * &b_expected).set_value(-6.0).set_grad(-2.0);
         let d_expected = (&e_expected + &c_expected).set_value(4.0).set_grad(-2.0);
@@ -364,12 +401,12 @@ mod tests {
         // sqrt(2)/2
         let output = 0.7071067811865476;
 
-        let x_input = Input::new(input);
+        let x_input = new_input(input);
         let x = Node::input(x_input);
 
         let y = x.tanh();
 
-        let x_input_expected = Input::new(input);
+        let x_input_expected = new_input(input);
         let x_expected = Node::input(x_input_expected).set_value(input).set_grad(0.5);
         let y_expected = x_expected.tanh().set_value(output).set_grad(1.0);
 
@@ -384,8 +421,8 @@ mod tests {
         // https://www.youtube.com/watch?v=VMj-3S1tku0&list=PLAqhIrjkxbuWI23v9cThsA9GvCAUhRvKZ
         // Around 1:26:17.
 
-        let a_input = Input::new(-2.0);
-        let b_input = Input::new(3.0);
+        let a_input = new_input(-2.0);
+        let b_input = new_input(3.0);
 
         let a = Node::input(a_input);
         let b = Node::input(b_input);
@@ -396,8 +433,8 @@ mod tests {
         // e???
         let f = &c * &d;
 
-        let a_input_expected = Input::new(-2.0);
-        let b_input_expected = Input::new(3.0);
+        let a_input_expected = new_input(-2.0);
+        let b_input_expected = new_input(3.0);
 
         let a_expected = Node::input(a_input_expected).set_value(-2.0).set_grad(-3.0);
         let b_expected = Node::input(b_input_expected).set_value(3.0).set_grad(-8.0);
